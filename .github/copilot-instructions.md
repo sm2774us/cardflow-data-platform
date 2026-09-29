@@ -1,0 +1,1 @@
+Follow AGENTS.md at the repo root. Key points: Java 17 / Spring Boot 3 with Spring JDBC (no JPA), forward-only Flyway migrations, never log card numbers, keep consumers idempotent, add a Karate feature for every API change, frontend uses TanStack Query/Router + shadcn-style components in `src/components/ui`.

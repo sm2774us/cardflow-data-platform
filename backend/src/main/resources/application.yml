@@ -1,0 +1,82 @@
+server:
+  port: 8080
+  shutdown: graceful
+  compression:
+    enabled: true
+
+spring:
+  application.name: cardflow-data-platform
+  lifecycle.timeout-per-shutdown-phase: 20s
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/cardflow}
+    username: ${DB_USER:cardflow}
+    password: ${DB_PASSWORD:cardflow}
+    hikari:
+      maximum-pool-size: ${DB_POOL:20}
+      connection-timeout: 5000
+  flyway.enabled: true
+  jackson:
+    default-property-inclusion: non_null
+    serialization.write-dates-as-timestamps: false
+  rabbitmq:
+    host: ${RABBIT_HOST:localhost}
+    port: ${RABBIT_PORT:5672}
+    username: ${RABBIT_USER:guest}
+    password: ${RABBIT_PASSWORD:guest}
+    publisher-confirm-type: simple
+    publisher-returns: true
+    listener:
+      simple:
+        concurrency: 4
+        max-concurrency: 16
+        prefetch: 50
+        default-requeue-rejected: false
+        retry:                       # stateless in-process retry w/ exponential backoff, then recoverer -> DLQ
+          enabled: true
+          initial-interval: 500ms
+          multiplier: 2.0
+          max-interval: 5s
+          max-attempts: 4
+
+cardflow:
+  webhook:
+    secret: ${WEBHOOK_SECRET:dev-only-change-me}
+  outbox:
+    batch-size: 200
+    poll-ms: 250
+  lake:
+    type: ${LAKE_TYPE:local}          # local | s3
+    bucket: ${LAKE_BUCKET:cardflow-lake-raw}
+    local-dir: ${LAKE_LOCAL_DIR:./build/lake}
+    s3-endpoint: ${S3_ENDPOINT:}       # e.g. http://localstack:4566
+    region: ${AWS_REGION:us-east-1}
+    export-interval-ms: ${LAKE_EXPORT_MS:30000}
+    batch-size: 5000
+  authorization:
+    per-txn-limit: 5000.00
+    velocity-max-per-minute: 8
+    decline-risk-threshold: 0.85
+    blocked-mccs: "7995,6051"
+    high-risk-countries: "KP,IR"
+  fraud:
+    chaos-failure-rate: 0.0           # demo the circuit breaker: 0.0 - 1.0
+  chaos:
+    enabled: ${CHAOS_ENABLED:true}    # enables poison-message demo; keep false in prod
+
+resilience4j.circuitbreaker.instances.fraudScorer:
+  sliding-window-size: 20
+  minimum-number-of-calls: 10
+  failure-rate-threshold: 50
+  wait-duration-in-open-state: 10s
+  permitted-number-of-calls-in-half-open-state: 3
+  register-health-indicator: true
+
+management:
+  endpoints.web.exposure.include: health,info,prometheus,metrics
+  endpoint.health.probes.enabled: true
+  endpoint.health.show-details: when_authorized
+  health.circuitbreakers.enabled: true
+  metrics.tags.application: cardflow
+
+springdoc.swagger-ui.path: /swagger-ui.html
+logging.pattern.level: "%5p [%X{correlationId:-}]"

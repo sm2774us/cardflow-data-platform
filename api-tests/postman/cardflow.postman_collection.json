@@ -1,0 +1,456 @@
+{
+  "info": {
+    "name": "CardFlow API",
+    "description": "Contract + behaviour checks. Run: newman run cardflow.postman_collection.json --env-var baseUrl=http://localhost:8080",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080"
+    },
+    {
+      "key": "webhookSecret",
+      "value": "dev-only-change-me"
+    },
+    {
+      "key": "eventId",
+      "value": ""
+    },
+    {
+      "key": "rawBody",
+      "value": ""
+    },
+    {
+      "key": "signature",
+      "value": ""
+    }
+  ],
+  "item": [
+    {
+      "name": "Health: liveness",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/actuator/health/liveness",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "actuator",
+            "health",
+            "liveness"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 UP', () => { pm.response.to.have.status(200); pm.expect(pm.response.json().status).to.eql('UP'); });",
+              "pm.test('correlation id header present', () => pm.response.to.have.header('X-Correlation-Id'));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "DQ rules catalogue",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/dq/rules",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "dq",
+            "rules"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const j = pm.response.json();",
+              "pm.test('200 + rules', () => { pm.response.to.have.status(200); pm.expect(j).to.be.an('array').that.is.not.empty; });",
+              "pm.test('rule shape', () => j.forEach(r => { pm.expect(r).to.have.keys(['code','description']); }));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook: unsigned -> 401",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/webhooks/card-events",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "webhooks",
+            "card-events"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"eventId\":\"x\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('401', () => pm.response.to.have.status(401));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook: signed -> 202",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/webhooks/card-events",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "webhooks",
+            "card-events"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{{rawBody}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const eventId = pm.variables.replaceIn('{{$guid}}');",
+              "const body = JSON.stringify({eventId, schemaVersion:1, eventType:'AUTHORIZATION', cardToken:'tok_NEWMAN0000001', merchantName:'Newman Cafe', mcc:'5814', amount:7.5, currency:'USD', country:'US', occurredAt:new Date().toISOString()});",
+              "const sig = 'sha256=' + CryptoJS.HmacSHA256(body, pm.environment.get('webhookSecret') || pm.collectionVariables.get('webhookSecret')).toString(CryptoJS.enc.Hex);",
+              "pm.collectionVariables.set('eventId', eventId);",
+              "pm.collectionVariables.set('rawBody', body);",
+              "pm.collectionVariables.set('signature', sig);"
+            ]
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('202 accepted', () => pm.response.to.have.status(202));",
+              "pm.test('not duplicate', () => pm.expect(pm.response.json().duplicate).to.eql(false));",
+              "pm.test('echoes eventId', () => pm.expect(pm.response.json().eventId).to.eql(pm.collectionVariables.get('eventId')));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Webhook: redelivery -> duplicate=true",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "X-Signature",
+            "value": "{{signature}}"
+          },
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/webhooks/card-events",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "webhooks",
+            "card-events"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{{rawBody}}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('202', () => pm.response.to.have.status(202));",
+              "pm.test('duplicate flagged (exactly-once at the edge)', () => pm.expect(pm.response.json().duplicate).to.eql(true));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Transactions: search by merchant",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/transactions",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "transactions"
+          ],
+          "query": [
+            {
+              "key": "q",
+              "value": "Newman"
+            },
+            {
+              "key": "size",
+              "value": "50"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 + page shape', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.have.keys(['items','total','page','size']); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization: approve",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/authorizations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "authorizations"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"cardToken\":\"tok_NEWMAN_AUTH1\",\"mcc\":\"5411\",\"amount\":20.00,\"country\":\"US\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "const j = pm.response.json();",
+              "pm.test('approved', () => { pm.response.to.have.status(200); pm.expect(j.approved).to.eql(true); });",
+              "pm.test('risk in [0,1]', () => pm.expect(j.riskScore).to.be.within(0,1));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization: sanctioned country declined",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/authorizations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "authorizations"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"cardToken\":\"tok_NEWMAN_AUTH2\",\"mcc\":\"5411\",\"amount\":20.00,\"country\":\"KP\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('declined w/ reason', () => { const j = pm.response.json(); pm.expect(j.approved).to.eql(false); pm.expect(j.reasons).to.include('HIGH_RISK_COUNTRY'); });"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Authorization: invalid payload -> 422",
+      "request": {
+        "method": "POST",
+        "header": [
+          {
+            "key": "Content-Type",
+            "value": "application/json"
+          }
+        ],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/authorizations",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "authorizations"
+          ]
+        },
+        "body": {
+          "mode": "raw",
+          "raw": "{\"cardToken\":\"\",\"mcc\":\"1\",\"amount\":0,\"country\":\"x\"}"
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('422', () => pm.response.to.have.status(422));",
+              "pm.test('response time < 500ms', () => pm.expect(pm.response.responseTime).to.be.below(500));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Pipeline stats",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/pipeline/stats",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "pipeline",
+            "stats"
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200', () => pm.response.to.have.status(200));"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Dead-letter queue listing",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{baseUrl}}/api/v1/dlq",
+          "host": [
+            "{{baseUrl}}"
+          ],
+          "path": [
+            "api",
+            "v1",
+            "dlq"
+          ],
+          "query": [
+            {
+              "key": "limit",
+              "value": "10"
+            }
+          ]
+        }
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('200 array', () => { pm.response.to.have.status(200); pm.expect(pm.response.json()).to.be.an('array'); });"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}

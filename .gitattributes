@@ -1,0 +1,63 @@
+# Normalize line endings: LF in the repo, native on checkout for text files
+* text=auto eol=lf
+
+# Source
+*.java          text eol=lf diff=java
+*.ts            text eol=lf
+*.tsx           text eol=lf
+*.js            text eol=lf
+*.cjs           text eol=lf
+*.css           text eol=lf
+*.html          text eol=lf diff=html
+*.sql           text eol=lf
+*.tf            text eol=lf
+*.tfvars        text eol=lf
+*.feature       text eol=lf
+*.md            text eol=lf diff=markdown
+*.json          text eol=lf
+*.yml           text eol=lf
+*.yaml          text eol=lf
+*.xml           text eol=lf
+*.properties    text eol=lf
+*.svg           text eol=lf
+Makefile        text eol=lf
+Dockerfile      text eol=lf
+*.sh            text eol=lf
+.env.example    text eol=lf
+
+# Windows scripts stay CRLF (none currently)
+*.bat           text eol=crlf
+*.cmd           text eol=crlf
+
+# Binary
+*.png           binary
+*.jpg           binary
+*.jpeg          binary
+*.gif           binary
+*.ico           binary
+*.woff          binary
+*.woff2         binary
+*.ttf           binary
+*.jar           binary
+*.zip           binary
+*.gz            binary
+
+# Lockfiles: keep out of diffs/noise and never auto-merge
+frontend/package-lock.json      -diff -merge linguist-generated=true
+**/.terraform.lock.hcl          -diff -merge linguist-generated=true
+
+# GitHub Linguist: make the language bar reflect the real code (Java, TypeScript, HCL, SQL)
+frontend/package-lock.json      linguist-generated
+frontend/public/**              linguist-vendored
+docs/**                         linguist-documentation
+*.md                            linguist-documentation
+api-tests/postman/*.json        linguist-generated
+data/snowflake/*.sql            linguist-language=SQL
+*.tf                            linguist-language=HCL
+*.feature                       linguist-language=Gherkin
+
+# Keep exported archives lean (git archive)
+.github/                        export-ignore
+docs/                           export-ignore
+.gitattributes                  export-ignore
+.gitignore                      export-ignore

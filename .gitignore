@@ -1,0 +1,26 @@
+# build
+backend/target/
+api-tests/karate/target/
+frontend/node_modules/
+frontend/dist/
+frontend/coverage/
+*.tsbuildinfo
+# infra
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+!*.tfvars.example
+.terraform.lock.hcl.bak
+# local data / secrets
+.env
+.env.*
+!.env.example
+data/lake/
+*.log
+newman.xml
+# IDE / OS
+.idea/
+.vscode/
+*.iml
+.DS_Store

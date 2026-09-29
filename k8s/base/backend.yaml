@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata: { name: backend, labels: { app: backend } }
+spec:
+  replicas: 2
+  strategy: { rollingUpdate: { maxSurge: 1, maxUnavailable: 0 } }
+  selector: { matchLabels: { app: backend } }
+  template:
+    metadata:
+      labels: { app: backend }
+      annotations: { prometheus.io/scrape: "true", prometheus.io/path: /actuator/prometheus, prometheus.io/port: "8080" }
+    spec:
+      terminationGracePeriodSeconds: 40
+      securityContext: { runAsNonRoot: true, seccompProfile: { type: RuntimeDefault } }   # no fixed UID => OpenShift restricted-v2 SCC friendly
+      topologySpreadConstraints:
+        - { maxSkew: 1, topologyKey: topology.kubernetes.io/zone, whenUnsatisfiable: ScheduleAnyway, labelSelector: { matchLabels: { app: backend } } }
+      containers:
+        - name: backend
+          image: ghcr.io/sm2774us/cardflow-backend:latest
+          ports: [{ containerPort: 8080, name: http }]
+          envFrom: [{ secretRef: { name: cardflow-secrets } }, { configMapRef: { name: cardflow-config } }]
+          securityContext: { allowPrivilegeEscalation: false, readOnlyRootFilesystem: true, capabilities: { drop: [ALL] } }
+          resources: { requests: { cpu: 250m, memory: 512Mi }, limits: { cpu: "1", memory: 1Gi } }
+          startupProbe: { httpGet: { path: /actuator/health/liveness, port: http }, failureThreshold: 30, periodSeconds: 3 }
+          livenessProbe: { httpGet: { path: /actuator/health/liveness, port: http }, periodSeconds: 10 }
+          readinessProbe: { httpGet: { path: /actuator/health/readiness, port: http }, periodSeconds: 5 }
+          lifecycle: { preStop: { exec: { command: ["sleep", "10"] } } }
+          volumeMounts: [{ name: tmp, mountPath: /tmp }, { name: lake, mountPath: /data }]
+      volumes: [{ name: tmp, emptyDir: {} }, { name: lake, emptyDir: {} }]
+---
+apiVersion: v1
+kind: Service
+metadata: { name: backend }
+spec: { selector: { app: backend }, ports: [{ port: 8080, targetPort: http, name: http }] }
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata: { name: backend }
+spec:
+  scaleTargetRef: { apiVersion: apps/v1, kind: Deployment, name: backend }
+  minReplicas: 2
+  maxReplicas: 10
+  metrics: [{ type: Resource, resource: { name: cpu, target: { type: Utilization, averageUtilization: 65 } } }]
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata: { name: backend }
+spec: { minAvailable: 1, selector: { matchLabels: { app: backend } } }

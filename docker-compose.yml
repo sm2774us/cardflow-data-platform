@@ -1,0 +1,45 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment: { POSTGRES_DB: cardflow, POSTGRES_USER: cardflow, POSTGRES_PASSWORD: cardflow }
+    ports: ["5432:5432"]
+    healthcheck: { test: ["CMD-SHELL", "pg_isready -U cardflow"], interval: 5s, retries: 10 }
+    volumes: [pgdata:/var/lib/postgresql/data]
+
+  rabbitmq:
+    image: rabbitmq:3.13-management-alpine
+    ports: ["5672:5672", "15672:15672"]
+    healthcheck: { test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"], interval: 10s, retries: 10 }
+
+  localstack:
+    image: localstack/localstack:3.8
+    environment: { SERVICES: s3 }
+    ports: ["4566:4566"]
+    volumes: ["./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro"]
+
+  backend:
+    build: ./backend
+    depends_on:
+      postgres: { condition: service_healthy }
+      rabbitmq: { condition: service_healthy }
+      localstack: { condition: service_started }
+    environment:
+      DB_URL: jdbc:postgresql://postgres:5432/cardflow
+      RABBIT_HOST: rabbitmq
+      LAKE_TYPE: s3
+      LAKE_BUCKET: cardflow-lake-raw
+      S3_ENDPOINT: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      LAKE_EXPORT_MS: "10000"
+      WEBHOOK_SECRET: dev-only-change-me
+      CORS_ORIGINS: http://localhost:8081
+    ports: ["8080:8080"]
+
+  frontend:
+    build: ./frontend
+    depends_on: [backend]
+    ports: ["8081:8080"]
+
+volumes:
+  pgdata:
